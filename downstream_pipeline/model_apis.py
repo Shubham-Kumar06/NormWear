@@ -258,11 +258,24 @@ class Chronos_API(nn.Module):
 
 from ..modules.normwear import *
 
+def ricker(points, a):
+    A = 2 / (np.sqrt(3 * a) * (np.pi**0.25))
+    wsq = a**2
+    vec = np.arange(0, points) - (points - 1.0) / 2
+    tsq = vec**2
+    mod = (1 - tsq / wsq)
+    gauss = np.exp(-tsq / (2 * wsq))
+    return A * mod * gauss
+
 def wt(ts, lf=0.1, hf=65, wl='gaus1', method='fft'):
     # in: L
     # out: FxL
-    # cwtmatr, freqs = pywt.cwt(ts, np.arange(lf, hf), wl, method=method)
-    cwtmatr = signal.cwt(ts, signal.ricker, np.arange(lf, hf))
+    from scipy.signal import fftconvolve
+    widths = np.arange(lf, hf)
+    cwtmatr = np.array([
+        fftconvolve(ts, ricker(min(int(10*w), len(ts)), w)[::-1], mode='same')
+        for w in widths
+    ])
     return cwtmatr #[F, L]
 
 def spec_cwt(audio_data): # [nvar, L]
@@ -299,9 +312,9 @@ class NormWear_API(nn.Module):
         # '../data/results/model_mae_checkpoint-140.pth' # 37k
 
         # load pretrained checkpoint
-        stat_dict = torch.load(weight_path, map_location=torch.device('cpu'))['model']
+        stat_dict = torch.load(weight_path, map_location=torch.device('cpu'), weights_only=False)['model']
 
-        # stat_dict = torch.load('../data/results/model_mae_checkpoint-140.pth', map_location=torch.device('cpu'))['model']
+        # stat_dict = torch.load('../data/results/model_mae_checkpoint-140.pth', map_location=torch.device('cpu'), weights_only=False)['model']
         self.backbone.load_state_dict(stat_dict)
         print("Model load successfull.")
 
@@ -383,9 +396,9 @@ class CrossVitAPI(nn.Module):
         # load pretrained checkpoint
         local_weight_path = weight_path.replace("../", "")
         if os.path.isfile(local_weight_path):
-            stat_dict = torch.load(local_weight_path, map_location=torch.device('cpu'))
+            stat_dict = torch.load(local_weight_path, map_location=torch.device('cpu'), weights_only=False)
         else:
-            stat_dict = torch.load(weight_path, map_location=torch.device('cpu'))['model']
+            stat_dict = torch.load(weight_path, map_location=torch.device('cpu'), weights_only=False)['model']
 
             # save weight in pod
             root_comp = local_weight_path.split("/")

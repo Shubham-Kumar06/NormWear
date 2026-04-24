@@ -1,4 +1,4 @@
-# Copyright (c) School of Computing, Information, and Data Science, University of California San Diego.
+# Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 
 # This source code is licensed under the license found in the
@@ -8,7 +8,6 @@
 # DeiT: https://github.com/facebookresearch/deit
 # BEiT: https://github.com/microsoft/unilm/tree/master/beit
 # --------------------------------------------------------
-
 import argparse
 import datetime
 import json
@@ -69,7 +68,6 @@ def get_args_parser():
     parser.add_argument('--use_meanpooling',type=int,default=0,help='use meanpooling for fusion')
 
     
-
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0.05,
                         help='weight decay (default: 0.05)')
@@ -134,12 +132,9 @@ def main(args):
     dataset_train = PretrainDataset(
         data_dir=args.data_path, 
         dataset_names=[
-            "auditory",
-            "cf",
-            "dalia",
-            "maus",
-            "mendeley",
-            "phyatt",
+           "wearable_pretrain",
+           "amigos_pretrain",
+           "dreamer_pretrain"
         ],
         is_test=args.is_test,)
 
@@ -190,8 +185,8 @@ def main(args):
         mask_f_prob=args.mask_f_prob,
         mask_prob=args.mask_prob,
         mask_scheme=args.mask_scheme,
-        use_cwt = args.use_cwt,
-        use_meanpooling=args.use_meanpooling)
+        use_cwt = args.use_cwt
+        )
 
     model.to(device)
 

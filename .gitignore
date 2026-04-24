@@ -3,3 +3,15 @@
 
 **/model_ckpts/
 cleaned_model/
+venv/
+__pycache__/
+data/
+model/
+results/
+
+*.zip
+*.pt
+*.pth
+*.ckpt
+
+loss_curve.png

@@ -15,7 +15,7 @@ if __name__ == '__main__':
 
     save_remark = args.remark if len(args.remark) > 0 else args.model_name
     save_fname = "{}_results_all.pkl".format(save_remark)
-    save_name = "../data/results/downstream_results/{}".format(save_fname) # full path
+    save_name = "NormWear/data/results/downstream_results/{}".format(save_fname) # full path
     pod_name = "physio-model-5d98486f85-ngv5t"
 
     DATA_GROUPS = {
@@ -64,7 +64,7 @@ if __name__ == '__main__':
         # prepare embed if not ready
         if args.prepare_embed or not embedding_ready:
             print("Preparing Embedding for {} ...".format(args.ds_name))
-            root_prefix = "" if args.data_path == "data" else "../"
+            root_prefix = "NormWear/"
             audio_embedding_prepare(model_name=args.model_name, data_rootpath=dataset, root_prefix=root_prefix, remark=save_remark, args=args)
             # combine_normwear_ast(data_rootpath=dataset, root_prefix=root_prefix)
 

@@ -82,7 +82,7 @@ def launch_linear_prob(args, embed_root, all_fns):
 
     # get split
     # print("Fetching data split...")
-    split = json.load(open("../data/{}/train_test_split.json".format(args.ds_name)))
+    split = json.load(open("{}/{}/train_test_split.json".format(args.data_path, args.ds_name)))
 
     # load data
     x_train, y_train, x_test, y_test = list(), dict(), list(), dict()

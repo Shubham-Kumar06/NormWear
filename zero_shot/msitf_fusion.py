@@ -236,10 +236,10 @@ class NormWearZeroShot(nn.Module):
         # load pretrained weight
         if len(msitf_ckpt) > 0:
             try:
-                stat_dict = torch.load(msitf_ckpt, map_location=torch.device('cpu'))
+                stat_dict = torch.load(msitf_ckpt, map_location=torch.device('cpu'), weights_only=False)
             
                 # # comment this out if the error on model save is fixed
-                # stat_dict = torch.load(msitf_ckpt, map_location=torch.device('cpu'))['model']
+                # stat_dict = torch.load(msitf_ckpt, map_location=torch.device('cpu'), weights_only=False)['model']
                 # current_state_dict_keys = self.aggregator.state_dict().keys()
                 # filtered_state_dict = {k.replace("aggregator.", ""): v for k, v in stat_dict.items() if k.replace("aggregator.", "") in current_state_dict_keys}
                 filtered_state_dict = stat_dict

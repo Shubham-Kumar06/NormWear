@@ -234,7 +234,7 @@ def main(args):
     backbone = NormWear(img_size=args.img_size,patch_size=(9,5),nvar=args.num_channel,
                                     is_pretrain=False,mean_fuse=args.use_meanpooling,
                                     mask_prob=0,)
-    checkpoint = torch.load(args.checkpoint,map_location='cpu')
+    checkpoint = torch.load(args.checkpoint,map_location='cpu', weights_only=False)
     checkpoint_model = checkpoint['model']
 
     # TODO: Interpolating position embedding

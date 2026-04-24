@@ -108,9 +108,6 @@ class EncoderLayer(nn.Module):
 
         return x_out 
 
-
-
-
 class NormWear(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
     """
@@ -125,11 +122,13 @@ class NormWear(nn.Module):
                  attn_score=False,
                  comb_freq=False,
                  no_fusion=False,
-                 mean_fuse=False,):
+                 mean_fuse=False,
+                 use_checkpoint=False): # Added use_checkpoint
         super().__init__()
         
         self.attn_score = attn_score
         self.comb_freq = comb_freq
+        self.use_checkpoint = use_checkpoint # Track checkpointing state
         
         if self.attn_score:
             self.attn_score_lst = []
@@ -439,7 +438,10 @@ class NormWear(nn.Module):
 
         # apply Encoder blocks
         for blk in self.encoder_blocks:
-            x = blk(x)
+            if self.use_checkpoint and self.training:
+                x = torch.utils.checkpoint.checkpoint(blk, x)
+            else:
+                x = blk(x)
         x = self.norm(x) # bs*nvar * p_patches * E
 
         return x, mask, ids_restore

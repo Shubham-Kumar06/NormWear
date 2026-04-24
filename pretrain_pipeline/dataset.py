@@ -87,64 +87,74 @@ class PretrainDataset(Dataset):
         return len(self.fnames)
 
     def __getitem__(self, idx):
-        # Load Pickle
         with open(self.fnames[idx], 'rb') as f:
             data_dict = pickle.load(f)
-    
-        target = torch.from_numpy(data_dict['tss'])
-        
-        x = torch.from_numpy(data_dict['cwt']).permute(0, 3, 1, 2)  # n_var, 3, L, 65
 
-        if torch.isnan(target).any() or torch.isnan(x).any():
-            return None  # Ignore the sample with NaN values
-        
-        # x = torch.stack([self.input_transforms(img) for img in x])
+        # Use pre-computed CWT if available (chunk mode)
+        # else compute on-the-fly
+        if 'cwt' in data_dict:
+            tss_raw = data_dict['tss']
+            if isinstance(tss_raw, torch.Tensor):
+                target = tss_raw.float()
+            else:
+                target = torch.from_numpy(tss_raw).float()
+            x = torch.from_numpy(data_dict['cwt']).permute(0, 3, 1, 2)  # [nvar, 3, L, 65]
+            L_cwt = x.size(2)
+            target = target[:, :L_cwt]
+        else:
+            tss_raw = data_dict['tss']
+            if isinstance(tss_raw, torch.Tensor):
+                target = tss_raw.float()
+            else:
+                 target = torch.from_numpy(tss_raw).float()
+    # ← Normalize BEFORE CWT so all datasets have same scale
+            mean = target.mean(dim=1, keepdim=True)
+            std = target.std(dim=1, keepdim=True) + 1e-8
+            target = (target - mean) / std
+            x = cwt_wrap(target)        # ← CWT on normalized signal ✅
+            L_cwt = x.size(2)
+            target = target[:, :L_cwt]
+
+
+        if (torch.isnan(target).any() or torch.isnan(x).any() or
+        torch.isinf(target).any() or torch.isinf(x).any()):
+            return None
 
         return {'target': target, 'input': x}
 
 def collate_fn(batch, pad_nvar=4):
-    # Filter out None values from the batch
     batch = [item for item in batch if item is not None]
-
     if len(batch) == 0:
         return {'target': torch.empty(0), 'input': torch.empty(0)}
 
-    # Find the maximum sequence length L in the batch
-    max_L = 387
-    
-    batch_size = len(batch)
-    input_dim_1 = batch[0]['input'].size(1)
-    input_dim_4 = batch[0]['input'].size(3)
-    
-    # Initialize padded tensors for inputs and targets
-    padded_inputs = torch.zeros((batch_size, pad_nvar, input_dim_1, max_L, input_dim_4))
-    padded_targets = torch.zeros((batch_size, pad_nvar, max_L + 1))
+    max_L = 388
+    batch_size   = len(batch)
+    input_dim_1  = batch[0]['input'].size(1)
+    input_dim_4  = batch[0]['input'].size(3)
+
+    padded_inputs  = torch.zeros((batch_size, pad_nvar, input_dim_1, max_L, input_dim_4))
+    padded_targets = torch.zeros((batch_size, pad_nvar, max_L))
 
     for i, item in enumerate(batch):
         n_var = item['input'].size(0)
-        L = item['input'].size(2)
-        
-        # If the number of variables is greater than pad_nvar, randomly sample pad_nvar variables
+        L_in  = min(item['input'].size(2),  max_L)
+        L_tgt = min(item['target'].size(1), max_L)
+
         if n_var > pad_nvar:
             indices = random.sample(range(n_var), pad_nvar)
-            item['input'] = item['input'][indices]
+            item['input']  = item['input'][indices]
             item['target'] = item['target'][indices]
             n_var = pad_nvar
 
+        padded_inputs[i,  :n_var, :, :L_in, :] = item['input'][:, :, :L_in, :]
+        padded_targets[i, :n_var,    :L_tgt  ] = item['target'][:,   :L_tgt]
 
-        # Pad the inputs and targets
-        padded_inputs[i, :n_var, :, :L, :] = item['input']
-        padded_targets[i, :n_var, :L + 1] = item['target']
-
-        # Copy last valid sequence to pad remaining variables up to pad_nvar
         for j in range(n_var, pad_nvar):
-            padded_inputs[i, j] = padded_inputs[i, n_var - 1]
-            padded_targets[i, j] = padded_targets[i, n_var - 1, :L + 1]
-        
+            padded_inputs[i,  j] = padded_inputs[i,  n_var - 1]
+            padded_targets[i, j] = padded_targets[i, n_var - 1]
 
     return {'target': padded_targets, 'input': padded_inputs}
 
-##############CWT Helper function########################################################################################################
 def ricker_wavelet(points, scale):
     """Generate the Ricker (Mexican hat) wavelet for a given scale."""
     # a = scale
