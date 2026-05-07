@@ -32,6 +32,21 @@ DATASET_LORA_CONFIG = {
         # subject ID: first segment of filename  "10_0_0_1174" → "10"
         "sid_split_idx": 0,
     },
+    "amigos": {
+        "num_classes":  2,           # binary arousal (>=5 high, <5 low)
+        "task_type":    "classification",
+        "max_L":        390,         # CWT len = 388-2 = 386, padded
+        "min_samples":  20,          # smallest subject has 476 windows
+        "lora_rank":    8,
+        "lora_alpha":   16,
+        "lora_dropout": 0.15,
+        "epochs":       10,
+        "lr":           3e-4,
+        "batch_size":   32,
+        # uid field is set explicitly in the pkl; sid_split_idx falls back
+        # on filename "P01_t00_w000" -> "P01"
+        "sid_split_idx": 0,
+    },
     "ecg_heart_cat": {
         "num_classes":  2,
         "task_type":    "classification",

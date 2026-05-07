@@ -69,11 +69,15 @@ class NormWearLoRA(nn.Module):
         )
 
         # ── trainable downstream head ──────────────────────────────────
+        # Binary classification uses 1 logit + BCE; multi-class uses
+        # num_classes logits + CE. The trainer expects [B] or [B,1] for
+        # binary and [B, C] for multi-class.
         if task_type == "classification":
+            out_dim = 1 if num_classes == 2 else num_classes
             self.head = nn.Sequential(
                 nn.LayerNorm(embed_dim),
                 nn.Dropout(0.1),
-                nn.Linear(embed_dim, num_classes),
+                nn.Linear(embed_dim, out_dim),
             )
         else:  # regression
             self.head = nn.Sequential(
