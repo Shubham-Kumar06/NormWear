@@ -434,7 +434,7 @@ def run_per_subject_personalization(
             subject_id=sid,
             **{**trainer_kwargs, "device": device},
         )
-        trainer.train(train_loader, test_loader, verbose=True)
+        trainer.train(train_loader, train_loader, verbose=True)
         result = trainer.evaluate(test_loader)
         all_results.append(result)
 

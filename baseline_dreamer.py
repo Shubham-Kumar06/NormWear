@@ -35,7 +35,7 @@ DATA_DIR    = "/home/ug24/FoundationalModel/NormWear/data/wearable_downstream/dr
 CKPT_PATH   = "/home/ug24/FoundationalModel/NormWear/data/results/full_pretrain_checkpoint-399.pth"
 SAVE_PATH   = "/home/ug24/FoundationalModel/NormWear/data/results/lora_results/dreamer_baseline_summary.json"
 DS_NAME     = "dreamer"
-PAD_NVAR    = 14
+PAD_NVAR    = 16   # pad to multiple of 4 (NormWear nvar=4 internals require B*nvar % 4 == 0)
 MAX_L       = 390
 TRAIN_FRAC  = 0.8
 SEED        = 42

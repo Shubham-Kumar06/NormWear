@@ -159,7 +159,11 @@ _LABEL_META: Dict[str, bool] = {
 
 def parse_label(ds_name: str, data_dict: dict):
     is_reg = _LABEL_META.get(ds_name, False)
-    return _parse_label_generic(data_dict, is_regression=is_reg)
+    raw = _parse_label_generic(data_dict, is_regression=is_reg)
+    # WESAD has 3 classes (0=baseline, 1=stress, 2=amusement) → binarize to stress vs non-stress
+    if ds_name == "wesad":
+        return 1 if int(raw) == 1 else 0
+    return raw
 
 
 # ─────────────────────────────────────────────────────────────────────────────

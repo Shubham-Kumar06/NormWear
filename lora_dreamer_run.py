@@ -18,7 +18,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -36,9 +36,9 @@ SAVE_PATH   = "/home/ug24/FoundationalModel/NormWear/data/results/lora_results/d
 DS_NAME       = "dreamer"
 NUM_CLASSES   = 2
 TASK_TYPE     = "classification"
-PAD_NVAR      = 14
+PAD_NVAR      = 16   # pad to multiple of 4 (NormWear nvar=4 internals require B*nvar % 4 == 0)
 MAX_L         = 390
-BATCH_SIZE    = 32
+BATCH_SIZE    = 8
 NUM_WORKERS   = 4
 
 # ── Paper-exact hyperparameters ───────────────────────────────────────────────
@@ -46,8 +46,8 @@ EPOCHS        = 50
 WARMUP_EPOCHS = 5
 LR            = 3e-4
 WEIGHT_DECAY  = 1e-2
-LORA_RANK     = 32
-LORA_ALPHA    = 64.0
+LORA_RANK     = 8
+LORA_ALPHA    = 16.0
 LORA_DROPOUT  = 0.1
 TARGET_MODULES = ("qkv", "proj", "fc1", "fc2")
 
@@ -172,9 +172,41 @@ def stratified_trial_split(trials_with_labels, train_frac=0.8, rng=None):
     return sorted(train), sorted(test)
 
 
+class _CachedDataset(Dataset):
+    """Holds pre-computed CWT tensors in RAM — eliminates per-epoch CWT recomputation."""
+    def __init__(self, inputs: torch.Tensor, labels: torch.Tensor):
+        self.inputs = inputs
+        self.labels = labels
+    def __len__(self): return len(self.labels)
+    def __getitem__(self, i): return {"input": self.inputs[i], "label": self.labels[i]}
+
+
+def _preload_cwt(ds: PersonalizedDownstreamDataset) -> "_CachedDataset":
+    """
+    Compute CWT for every window once and cache in RAM.
+    DREAMER has 14 channels -> 160ms CWT per window. Without this, CWT is
+    recomputed from disk on every __getitem__ call (50 times per window per epoch).
+    """
+    t0 = time.time()
+    inputs, labels = [], []
+    for i in range(len(ds)):
+        item = ds[i]
+        inputs.append(item["input"])
+        labels.append(item["label"])
+    inputs = torch.stack(inputs)   # [N, PAD_NVAR, 3, MAX_L, 65]
+    labels = torch.stack(labels)   # [N]
+    print(f"    CWT pre-load: {len(ds)} windows in {time.time()-t0:.1f}s  "
+          f"({inputs.element_size()*inputs.numel()/1e6:.0f} MB RAM)")
+    return _CachedDataset(inputs, labels)
+
+
 def train_one_subject(sid, train_files, test_files, encoder_template, device):
+    # All train_files come from train trials; test_files from held-out test trials.
+    # No window-level val split — that would leak across windows of the same trial.
+    # Paper (lora.md §V-A) trains for exactly EPOCHS epochs with no early stopping.
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, dir="/tmp")
-    json.dump({"train": train_files, "test": test_files}, tmp); tmp.close()
+    json.dump({"train": train_files, "test": test_files}, tmp)
+    tmp.close()
 
     common = dict(data_dir=DATA_DIR, ds_name=DS_NAME, split_file=tmp.name,
                   max_L=MAX_L, pad_nvar=PAD_NVAR, task_type=TASK_TYPE, sid_split_idx=0)
@@ -182,10 +214,16 @@ def train_one_subject(sid, train_files, test_files, encoder_template, device):
     ds_test  = PersonalizedDownstreamDataset(**common, split="test")
     os.unlink(tmp.name)
 
-    dl_train = DataLoader(ds_train, batch_size=BATCH_SIZE, shuffle=True,
-                          num_workers=NUM_WORKERS, pin_memory=True, drop_last=False)
-    dl_test  = DataLoader(ds_test,  batch_size=BATCH_SIZE, shuffle=False,
-                          num_workers=NUM_WORKERS, pin_memory=True)
+    # Pre-compute CWT once per subject into RAM so each epoch reads cached tensors.
+    # Without this, the 14-channel CWT (160ms/window) runs 50x per window = ~2h/subject.
+    print(f"  Pre-loading CWT into RAM...")
+    cached_train = _preload_cwt(ds_train)
+    cached_test  = _preload_cwt(ds_test)
+
+    dl_train = DataLoader(cached_train, batch_size=BATCH_SIZE, shuffle=True,
+                          num_workers=0, pin_memory=True, drop_last=False)
+    dl_test  = DataLoader(cached_test,  batch_size=BATCH_SIZE, shuffle=False,
+                          num_workers=0, pin_memory=True)
 
     model = NormWearLoRAPaper(copy.deepcopy(encoder_template)).to(device)
     params_info = model.count_parameters()
@@ -196,15 +234,25 @@ def train_one_subject(sid, train_files, test_files, encoder_template, device):
     trainable = model.trainable_parameters()
     optim = torch.optim.AdamW(trainable, lr=LR, weight_decay=WEIGHT_DECAY,
                                betas=(0.9, 0.999))
-    bce = nn.BCEWithLogitsLoss()
+
+    # Class-balanced BCE: 72.5% of DREAMER trials are positive (high arousal).
+    # Without pos_weight, the model is biased toward predicting positive and
+    # never learns to discriminate. pos_weight = n_neg / n_pos applied to the
+    # positive class brings the effective gradient back to balanced.
+    # (Paper §IV-A-e specifies BCE for binary tasks but does not specify class
+    # weighting — pos_weight is a training-detail improvement, not a LoRA change.)
+    y_train = cached_train.labels.long()
+    n_pos = int((y_train == 1).sum().item())
+    n_neg = int((y_train == 0).sum().item())
+    pos_weight = torch.tensor([n_neg / max(n_pos, 1)], dtype=torch.float32, device=device)
+    print(f"  Class balance: n_pos={n_pos}  n_neg={n_neg}  pos_weight={pos_weight.item():.3f}")
+    bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     def lr_lambda(epoch):
         if epoch < WARMUP_EPOCHS: return (epoch + 1) / max(WARMUP_EPOCHS, 1)
         prog = (epoch - WARMUP_EPOCHS) / max(EPOCHS - WARMUP_EPOCHS, 1)
         return 0.5 * (1 + np.cos(np.pi * prog))
     sched = torch.optim.lr_scheduler.LambdaLR(optim, lr_lambda)
-
-    best_auc = -1.0
 
     for ep in range(EPOCHS):
         t0 = time.time()
@@ -224,33 +272,30 @@ def train_one_subject(sid, train_files, test_files, encoder_template, device):
         train_loss = total_loss / max(n, 1)
         sched.step()
 
-        model.eval()
-        all_y, all_p = [], []
-        with torch.no_grad():
-            for batch in dl_test:
-                x = batch["input"].to(device)
-                p = torch.sigmoid(model(x).squeeze(-1)).cpu().numpy()
-                all_y.append(batch["label"].numpy())
-                all_p.append(p)
-        y_arr = np.concatenate(all_y); p_arr = np.concatenate(all_p)
-
-        if len(np.unique(y_arr)) < 2:
-            auc = float("nan")
-        else:
-            raw = roc_auc_score(y_arr, p_arr) * 100
-            auc = max(raw, 100.0 - raw)
-
-        if not np.isnan(auc) and auc > best_auc:
-            best_auc = auc
-
         if (ep + 1) % 10 == 0 or ep == 0:
             print(f"  [{sid}] E{ep+1:2d}/{EPOCHS} train_loss={train_loss:.4f} "
-                  f"AUC={auc:.2f} lr={optim.param_groups[0]['lr']:.1e} "
+                  f"lr={optim.param_groups[0]['lr']:.1e} "
                   f"({time.time()-t0:.1f}s)")
 
-    del model, optim
+    # Single evaluation on held-out test trials after all 50 epochs
+    model.eval()
+    all_y, all_p = [], []
+    with torch.no_grad():
+        for batch in dl_test:
+            x = batch["input"].to(device)
+            p = torch.sigmoid(model(x).squeeze(-1)).cpu().numpy()
+            all_y.append(batch["label"].numpy())
+            all_p.append(p)
+    y_arr = np.concatenate(all_y)
+    p_arr = np.concatenate(all_p)
+    if len(np.unique(y_arr)) < 2:
+        test_auc = float("nan")
+    else:
+        test_auc = roc_auc_score(y_arr, p_arr) * 100
+
+    del optim
     torch.cuda.empty_cache()
-    return best_auc
+    return test_auc
 
 
 def main():
@@ -292,27 +337,27 @@ def main():
               f"test_windows={len(test_files)}")
 
         try:
-            best_auc = train_one_subject(sid, train_files, test_files,
+            test_auc = train_one_subject(sid, train_files, test_files,
                                          encoder_template, device)
         except Exception as e:
             import traceback; traceback.print_exc()
             print(f"[{sid}] ERROR: {e}"); continue
 
-        print(f"[{sid}] *** BEST AUC = {best_auc:.2f}% ***")
+        print(f"[{sid}] *** test_AUC = {test_auc:.2f}% ***")
         per_subject.append({
-            "subject_id": sid, "auc": float(best_auc),
+            "subject_id": sid, "auc": float(test_auc),
             "n_train_trials": len(train_t), "n_test_trials": len(test_t),
             "n_train_wins": len(train_files), "n_test_wins": len(test_files),
         })
 
-    aucs = [r["auc"] for r in per_subject if not np.isnan(r["auc"])]
+    test_aucs = [r["auc"] for r in per_subject if not np.isnan(r["auc"])]
     summary = {
         "method": (f"LoRA-Paper-Exact rank={LORA_RANK} alpha={LORA_ALPHA} "
                    f"epochs={EPOCHS} targets={TARGET_MODULES}"),
         "checkpoint": os.path.basename(CKPT_PATH),
         "per_subject": per_subject,
-        "mean_auc": float(np.mean(aucs)) if aucs else float("nan"),
-        "std_auc":  float(np.std(aucs))  if aucs else float("nan"),
+        "mean_test_auc": float(np.mean(test_aucs)) if test_aucs else float("nan"),
+        "std_test_auc":  float(np.std(test_aucs))  if test_aucs else float("nan"),
         "n_subjects": len(per_subject),
     }
     os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
@@ -323,9 +368,9 @@ def main():
     print(f"  DREAMER LoRA (Paper-Exact) Results")
     print(f"{'='*65}")
     for r in per_subject:
-        print(f"  {r['subject_id']:6}  AUC = {r['auc']:.2f}%")
+        print(f"  {r['subject_id']:6}  test_AUC = {r['auc']:.2f}%")
     print(f"  {'─'*30}")
-    print(f"  Mean AUC = {summary['mean_auc']:.2f} ± {summary['std_auc']:.2f}%"
+    print(f"  Mean test AUC = {summary['mean_test_auc']:.2f} ± {summary['std_test_auc']:.2f}%"
           f"  (n={summary['n_subjects']})")
     print(f"{'='*65}")
     print(f"Saved → {SAVE_PATH}")
