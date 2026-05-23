@@ -155,7 +155,6 @@ def main():
     os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
     with open(SAVE_PATH, "w") as fp:
         json.dump(summary, fp, indent=2)
-
     print(f"\n[Baseline-WESAD] Mean AUC = {summary['mean_auc']:.2f} "
           f"± {summary['std_auc']:.2f}%  (n={summary['n_subjects']})")
     print(f"Saved → {SAVE_PATH}")

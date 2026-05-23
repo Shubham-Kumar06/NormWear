@@ -31,14 +31,14 @@ from NormWear.modules.normwear  import NormWear
 # ── Config ───────────────────────────────────────────────────────────────────
 DATA_DIR    = "/home/ug24/FoundationalModel/NormWear/data/wearable_downstream/dreamer/sample_for_downstream"
 CKPT_PATH   = "/home/ug24/FoundationalModel/NormWear/data/results/full_pretrain_checkpoint-399.pth"
-SAVE_PATH   = "/home/ug24/FoundationalModel/NormWear/data/results/lora_results/dreamer_lora_paper_summary.json"
+SAVE_PATH   = "/home/ug24/FoundationalModel/NormWear/data/results/lora_results/dreamer_lora_r16_b16_summary.json"
 
 DS_NAME       = "dreamer"
 NUM_CLASSES   = 2
 TASK_TYPE     = "classification"
 PAD_NVAR      = 16   # pad to multiple of 4 (NormWear nvar=4 internals require B*nvar % 4 == 0)
 MAX_L         = 390
-BATCH_SIZE    = 8
+BATCH_SIZE    = 16
 NUM_WORKERS   = 4
 
 # ── Paper-exact hyperparameters ───────────────────────────────────────────────
@@ -46,8 +46,8 @@ EPOCHS        = 50
 WARMUP_EPOCHS = 5
 LR            = 3e-4
 WEIGHT_DECAY  = 1e-2
-LORA_RANK     = 8
-LORA_ALPHA    = 16.0
+LORA_RANK     = 16
+LORA_ALPHA    = 32.0
 LORA_DROPOUT  = 0.1
 TARGET_MODULES = ("qkv", "proj", "fc1", "fc2")
 
