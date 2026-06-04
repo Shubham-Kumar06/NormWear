@@ -26,8 +26,8 @@ from NormWear.modules.normwear import NormWear
 # ── Config ────────────────────────────────────────────────────────────────────
 DATA_DIR   = "/home/ug24/FoundationalModel/NormWear/data/wearable_downstream/amigos/sample_for_downstream"
 SPLIT_JSON = "/home/ug24/FoundationalModel/NormWear/data/wearable_downstream/amigos/per_subject_splits.json"
-CKPT_PATH  = "/home/ug24/FoundationalModel/NormWear/data/results/full_pretrain_checkpoint-399.pth"
-SAVE_PATH  = "/home/ug24/FoundationalModel/NormWear/data/results/lora_results/amigos_baseline_summary.json"
+CKPT_PATH  = "/home/ug24/FoundationalModel/NormWear/data/results/normwear_aug_BEST_ep0_81p35.pth"
+SAVE_PATH  = "/home/ug24/FoundationalModel/NormWear/data/results/lora_results/amigos_baseline_summary_AUG_BEST.json"
 DS_NAME    = "amigos"
 PAD_NVAR   = 4
 MAX_L      = 390

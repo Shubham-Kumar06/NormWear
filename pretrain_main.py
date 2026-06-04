@@ -29,7 +29,7 @@ from .pretrain_pipeline.misc import NativeScalerWithGradNormCount as NativeScale
 from .modules.normwear import *
 
 from .pretrain_pipeline.engine_pretrain import train_one_epoch
-from .pretrain_pipeline.dataset import PretrainDataset,collate_fn,DataLoader
+from .pretrain_pipeline.dataset import AugmentedPretrainDataset,collate_fn,DataLoader
 
 def get_args_parser():
     parser = argparse.ArgumentParser('MAE pre-training', add_help=False)
@@ -42,6 +42,8 @@ def get_args_parser():
                         help='model_remark')
     parser.add_argument('--save_every_epoch', default=20, type=int,
                         help='default: save every 20 epoches')
+    parser.add_argument('--save_every_steps', default=0, type=int,
+                        help='if >0, save a checkpoint every N optimizer steps (sub-epoch checkpointing)')
 
     # Model parameters
     parser.add_argument('--model', default='mae_vit_base_patch16', type=str, metavar='MODEL',
@@ -129,13 +131,12 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_train = PretrainDataset(
-        data_dir=args.data_path, 
+    dataset_train = AugmentedPretrainDataset(
+        data_dir=args.data_path,
         dataset_names=[
            "wearable_pretrain",
-           "amigos_pretrain",
-           "dreamer_pretrain"
         ],
+        aug_factor=9,  # originals + 9x augmented = 10x total (~2.4M samples)
         is_test=args.is_test,)
 
 

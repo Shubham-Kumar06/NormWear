@@ -27,6 +27,8 @@ def train_one_epoch(model: torch.nn.Module,
     print_freq = 20
 
     accum_iter = args.accum_iter
+    save_every_steps = getattr(args, 'save_every_steps', 0)
+    steps_per_epoch = max(1, len(data_loader) // accum_iter)
 
     optimizer.zero_grad()
 
@@ -78,7 +80,15 @@ def train_one_epoch(model: torch.nn.Module,
                     update_grad=(data_iter_step + 1) % accum_iter == 0)
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad()
-            
+
+            # sub-epoch checkpointing: save every `save_every_steps` optimizer steps
+            if save_every_steps:
+                global_opt_step = epoch * steps_per_epoch + (data_iter_step + 1) // accum_iter
+                if global_opt_step % save_every_steps == 0:
+                    misc.save_model(
+                        args=args, epoch=f"step{global_opt_step:06d}",
+                        model=model, model_without_ddp=model,
+                        optimizer=optimizer, loss_scaler=loss_scaler)
 
         torch.cuda.synchronize()
 

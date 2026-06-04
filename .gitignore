@@ -15,3 +15,12 @@ results/
 *.ckpt
 
 loss_curve.png
+
+# Training/eval logs and run artifacts
+*.log
+augment_log.txt
+augment_pretrain.txt
+eval_watcher_out.txt
+eval_watcher2_out.txt
+pretrain_aug_log.txt
+pretrain_aug2_log.txt

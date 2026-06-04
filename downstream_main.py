@@ -37,8 +37,13 @@ if __name__ == '__main__':
         ],
         1: [ # if test a subset of the tasks, specified them here, e.g.:
             "wearable_downstream/PPG_CVD",
-            "wearable_downstream/ppg_hgb", 
-        ]
+            "wearable_downstream/ppg_hgb",
+        ],
+        2: [ # fast peak-mapping subset: signal-rich tasks that move with model quality
+            "wearable_downstream/wesad",          # key real-gap task
+            "wearable_downstream/drive_fatigue",  # fast, sensitive
+            "wearable_downstream/gameemo",        # sensitive
+        ],
     }
 
     # main iteration
